@@ -1,6 +1,6 @@
-.PHONY: start dev build install backend typecheck
+.PHONY: start dev build install typecheck
 
-# Build and run the production server (frontend + realtime backend on one port).
+# Build and run the production app (needs ABLY_API_KEY in .env.local).
 start: install build
 	npm start
 
@@ -14,9 +14,6 @@ install: node_modules
 
 node_modules: package.json
 	npm install
-
-backend: install
-	npm run backend
 
 typecheck: install
 	npm run typecheck

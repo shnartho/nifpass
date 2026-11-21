@@ -20,17 +20,9 @@ const messages: Record<ClientErrorCode, FriendlyError> = {
     title: "Store not available",
     message: "This store isn't receiving NIFs right now. Ask the staff to open NIFPass on their screen, then try again.",
   },
-  NOT_JOINED: {
-    title: "Connection interrupted",
-    message: "Your connection to the store was interrupted. Please scan the QR code again.",
-  },
   DELIVERY_FAILED: {
     title: "NIF not delivered",
     message: "The store didn't receive your NIF. Please try again.",
-  },
-  DUPLICATE_REQUEST: {
-    title: "Already sending",
-    message: "Your NIF is already being shared. Please wait a moment.",
   },
   UNAUTHORIZED: {
     title: "Sign-in problem",

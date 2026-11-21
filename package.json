@@ -2,28 +2,24 @@
   "name": "nifpass",
   "version": "0.1.0",
   "private": true,
-  "description": "NIFPass by GoGentik - share your Portuguese NIF with merchants by scanning a QR code.",
+  "description": "NIFPass by GoGentik - share your Portuguese NIF with stores by scanning a QR code.",
   "scripts": {
-    "dev": "tsx server/index.ts",
+    "dev": "next dev -H 0.0.0.0",
     "build": "next build",
-    "start": "tsx server/index.ts --prod",
-    "backend": "tsx server/standalone.ts",
-    "start:backend": "tsx server/standalone.ts --prod",
-    "frontend": "next dev -H 0.0.0.0",
+    "start": "next start -H 0.0.0.0",
     "typecheck": "tsc --noEmit"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@ably/pubsub-device": "^3.2.0",
+    "@ably/pubsub-server": "^3.2.0",
     "html5-qrcode": "^2.3.8",
     "next": "^15.5.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1",
-    "tsx": "^4.19.0"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.0",

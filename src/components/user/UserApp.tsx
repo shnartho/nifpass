@@ -1,14 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Spinner } from "@/components/Button";
 import { Logo } from "@/components/Logo";
+import { api } from "@/lib/api";
 import { friendlyError, type ClientErrorCode, type FriendlyError } from "@/lib/errors";
 import { formatLisbonDateTime, groupNif } from "@/lib/format";
 import { parseQrPayload } from "@/lib/qrPayload";
-import { REQUEST_TIMEOUT_MS, getSocket } from "@/lib/socket";
-import { useConnectionStatus } from "@/lib/useConnectionStatus";
-import { STORE_QUERY_PARAM, isValidNif, isValidStoreId, type StoreStatus } from "@/shared/protocol";
+import { useOnline } from "@/lib/useOnline";
+import { STORE_QUERY_PARAM, isValidNif, isValidStoreId } from "@/shared/protocol";
 import { NifForm } from "./NifForm";
 import { QrScanner, type CameraErrorKind } from "./QrScanner";
 
@@ -49,8 +49,7 @@ const cameraErrors: Record<CameraErrorKind, FriendlyError> = {
 };
 
 export default function UserApp() {
-  const socket = useMemo(getSocket, []);
-  const connection = useConnectionStatus(socket);
+  const isOnline = useOnline();
 
   const [screen, setScreenState] = useState<Screen>("home");
   const [nif, setNifState] = useState<string | null>(null);
@@ -62,7 +61,7 @@ export default function UserApp() {
   const [sharedAt, setSharedAt] = useState<number | null>(null);
   const [sharedWith, setSharedWith] = useState<string | null>(null);
 
-  // Refs mirror state for socket listeners and to block duplicate requests.
+  // Refs mirror state to block duplicate requests.
   const screenRef = useRef<Screen>("home");
   const merchantRef = useRef<StoreLink | null>(null);
   const pendingRef = useRef<{ type: "scan" } | { type: "join"; storeId: string } | null>(null);
@@ -87,11 +86,7 @@ export default function UserApp() {
     setMerchantState(m);
   }, []);
 
-  const leaveMerchant = useCallback(() => {
-    const m = merchantRef.current;
-    if (m) socket.emit("customer:leave", { storeId: m.storeId });
-    setMerchant(null);
-  }, [socket, setMerchant]);
+  const leaveMerchant = useCallback(() => setMerchant(null), [setMerchant]);
 
   const showError = useCallback(
     (err: FriendlyError, retry: ScreenError["retry"]) => {
@@ -104,7 +99,7 @@ export default function UserApp() {
   const showCodeError = useCallback(
     (code: ClientErrorCode) => {
       const retry: ScreenError["retry"] =
-        code === "DELIVERY_FAILED" || code === "DUPLICATE_REQUEST" || code === "RATE_LIMITED" ? "share" : "scan";
+        code === "DELIVERY_FAILED" || code === "RATE_LIMITED" || code === "TIMEOUT" ? "share" : "scan";
       if (retry === "scan") leaveMerchant();
       showError(friendlyError(code), merchantRef.current ? retry : "scan");
     },
@@ -112,21 +107,14 @@ export default function UserApp() {
   );
 
   const join = useCallback(
-    (storeId: string) => socket.timeout(REQUEST_TIMEOUT_MS).emitWithAck("customer:join", { storeId }),
-    [socket],
+    (storeId: string) => api<{ storeName: string }>(`/api/stores/${encodeURIComponent(storeId)}`),
+    [],
   );
 
-  /** Sends the NIF to a joined store. Callers own busyRef. */
+  /** Sends the NIF to the scanned store. Callers own busyRef. */
   const deliver = useCallback(
     async (m: StoreLink, value: string) => {
-      const send = () =>
-        socket.timeout(REQUEST_TIMEOUT_MS).emitWithAck("customer:share", { storeId: m.storeId, nif: value });
-      let res = await send();
-      if (!res.ok && res.code === "NOT_JOINED") {
-        // Our socket reconnected and lost its membership: rejoin once and retry.
-        const rejoin = await join(m.storeId);
-        res = rejoin.ok ? await send() : rejoin;
-      }
+      const res = await api<{ receivedAt: number; storeName: string }>("/api/share", { storeId: m.storeId, nif: value });
       if (res.ok) {
         setSharedAt(res.receivedAt);
         setSharedWith(res.storeName);
@@ -136,7 +124,7 @@ export default function UserApp() {
         showCodeError(res.code);
       }
     },
-    [socket, join, leaveMerchant, setScreen, showCodeError],
+    [leaveMerchant, setScreen, showCodeError],
   );
 
   const connectToMerchant = useCallback(
@@ -241,32 +229,6 @@ export default function UserApp() {
     // Run once on mount.
   }, []);
 
-  useEffect(() => {
-    const onStoreStatus = ({ storeId, online, storeName }: StoreStatus) => {
-      const m = merchantRef.current;
-      if (m?.storeId === storeId) setMerchant({ ...m, online, storeName });
-    };
-    const onConnect = async () => {
-      const m = merchantRef.current;
-      if (!m || screenRef.current !== "confirm") return;
-      try {
-        const res = await join(m.storeId);
-        if (merchantRef.current?.storeId !== m.storeId) return;
-        if (res.ok) setMerchant({ ...m, online: true, storeName: res.storeName });
-        else if (res.code !== "STORE_OFFLINE") showCodeError(res.code);
-        else setMerchant({ ...m, online: false });
-      } catch {
-        // Next reconnect will retry.
-      }
-    };
-    socket.on("store:status", onStoreStatus);
-    socket.on("connect", onConnect);
-    return () => {
-      socket.off("store:status", onStoreStatus);
-      socket.off("connect", onConnect);
-    };
-  }, [socket, join, setMerchant, showCodeError]);
-
   const goHome = () => {
     leaveMerchant();
     setScreen("home");
@@ -280,18 +242,14 @@ export default function UserApp() {
             <Logo size="sm" />
           </button>
           <span className="flex items-center gap-2 text-xs font-medium text-ink-500">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                connection === "connected" ? "bg-emerald-500" : connection === "connecting" ? "bg-amber-400" : "bg-rose-500"
-              }`}
-            />
-            {connection === "connected" ? "Online" : connection === "connecting" ? "Connecting…" : "Offline"}
+            <span className={`h-2 w-2 rounded-full ${isOnline ? "bg-emerald-500" : "bg-rose-500"}`} />
+            {isOnline ? "Online" : "Offline"}
           </span>
         </header>
 
-        {connection === "disconnected" && (
+        {!isOnline && (
           <div className="mx-5 mt-2 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800 ring-1 ring-inset ring-amber-200">
-            <Spinner /> Connection lost. Reconnecting…
+            <Spinner /> No internet connection. Waiting…
           </div>
         )}
 
@@ -357,7 +315,7 @@ export default function UserApp() {
               nif={nif}
               storeName={merchant?.storeName ?? ""}
               merchantOnline={merchant?.online ?? false}
-              online={connection === "connected"}
+              online={isOnline}
               sharing={screen === "sharing"}
               onConfirm={share}
               onCancel={goHome}

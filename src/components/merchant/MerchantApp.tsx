@@ -5,27 +5,34 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Spinner } from "@/components/Button";
 import { Logo } from "@/components/Logo";
 import { StatusPill, type StatusTone } from "@/components/StatusPill";
-import { friendlyError } from "@/lib/errors";
 import { formatLisbonDay, formatLisbonTime } from "@/lib/format";
 import { buildQrPayload, publicBaseUrl } from "@/lib/qrPayload";
-import { REQUEST_TIMEOUT_MS, getSocket } from "@/lib/socket";
 import { clearAccount, loadAccount, saveAccount, type StoreAccount } from "@/lib/storeAuth";
-import { useConnectionStatus } from "@/lib/useConnectionStatus";
+import { useStoreChannel } from "@/lib/useStoreChannel";
 import type { NifEntry } from "@/shared/protocol";
 import { LatestNif, NifHistory } from "./NifFeed";
 import { NifToasts } from "./NifToasts";
 import { StoreAuth } from "./StoreAuth";
 import { StoreQr } from "./StoreQr";
 
-type OpenState = "opening" | "open" | "error";
-
 // Stores with a printed QR at the counter can hide the on-screen one.
 const SHOW_QR_KEY = "nifpass.store.showQr";
+const MAX_ENTRIES = 100;
+// Per-tab only: survives a reload but is gone when the tab closes.
+const entriesKey = (storeId: string) => `nifpass.store.entries.${storeId}`;
+
+function loadEntries(storeId: string): NifEntry[] {
+  try {
+    return JSON.parse(sessionStorage.getItem(entriesKey(storeId)) ?? "[]");
+  } catch {
+    return [];
+  }
+}
 
 const mergeEntries = (current: NifEntry[], incoming: NifEntry[]) => {
   const byId = new Map(current.map((e) => [e.id, e]));
   for (const e of incoming) byId.set(e.id, e);
-  return [...byId.values()].sort((a, b) => b.receivedAt - a.receivedAt);
+  return [...byId.values()].sort((a, b) => b.receivedAt - a.receivedAt).slice(0, MAX_ENTRIES);
 };
 
 function downloadPoster(qr: HTMLCanvasElement, storeName: string) {
@@ -89,11 +96,7 @@ export default function MerchantApp() {
 }
 
 function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignOut: () => void }) {
-  const socket = useMemo(getSocket, []);
-  const connection = useConnectionStatus(socket);
-  const [openState, setOpenState] = useState<OpenState>("opening");
-  const [openError, setOpenError] = useState<string | null>(null);
-  const [entries, setEntries] = useState<NifEntry[]>([]);
+  const [entries, setEntries] = useState<NifEntry[]>(() => loadEntries(account.storeId));
   const [toasts, setToasts] = useState<NifEntry[]>([]);
   const [nfcNotice, setNfcNotice] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -113,40 +116,14 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
 
   const dismissToast = useCallback((id: string) => setToasts((cur) => cur.filter((t) => t.id !== id)), []);
 
-  const openStore = useCallback(async () => {
-    setOpenState("opening");
-    try {
-      const res = await socket
-        .timeout(REQUEST_TIMEOUT_MS)
-        .emitWithAck("store:open", { storeId: account.storeId, secret: account.secret, name: account.name });
-      if (res.ok) {
-        setEntries((cur) => mergeEntries(cur, res.entries));
-        setOpenState("open");
-        setOpenError(null);
-      } else {
-        setOpenState("error");
-        setOpenError(friendlyError(res.code).message);
-      }
-    } catch {
-      // Retried automatically on the next "connect".
-    }
-  }, [socket, account]);
+  const { state: connection, error: connectionError } = useStoreChannel(account, (entry) => {
+    setEntries((cur) => mergeEntries(cur, [entry]));
+    setToasts([entry]);
+  });
 
   useEffect(() => {
-    const onNif = (entry: NifEntry, ack: (received: boolean) => void) => {
-      ack(true);
-      setEntries((cur) => mergeEntries(cur, [entry]));
-      setToasts([entry]);
-    };
-    const onConnect = () => void openStore();
-    socket.on("store:nif", onNif);
-    socket.on("connect", onConnect);
-    if (socket.connected) void openStore();
-    return () => {
-      socket.off("store:nif", onNif);
-      socket.off("connect", onConnect);
-    };
-  }, [socket, openStore]);
+    sessionStorage.setItem(entriesKey(account.storeId), JSON.stringify(entries));
+  }, [account.storeId, entries]);
 
   useEffect(() => {
     if (!confirmClear) return;
@@ -158,12 +135,11 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
     if (!confirmClear) return setConfirmClear(true);
     setConfirmClear(false);
     setEntries([]);
-    socket.emit("store:clear", () => {});
   };
 
   const signOut = () => {
     if (!window.confirm("Sign out? This screen will stop receiving NIFs until you sign in again.")) return;
-    socket.emit("store:close");
+    sessionStorage.removeItem(entriesKey(account.storeId));
     onSignOut();
   };
 
@@ -172,11 +148,11 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
     setMenuOpen(false);
   };
 
-  const online = connection === "connected" && openState === "open";
+  const online = connection === "open";
   const status = ((): { tone: StatusTone; label: string; pulse?: boolean } => {
-    if (connection !== "connected") return { tone: "warning", label: "Reconnecting…", pulse: true };
-    if (openState === "open") return { tone: "success", label: "Open · receiving NIFs", pulse: true };
-    if (openState === "error") return { tone: "danger", label: "Not connected" };
+    if (connection === "open") return { tone: "success", label: "Open · receiving NIFs", pulse: true };
+    if (connection === "reconnecting") return { tone: "warning", label: "Reconnecting…", pulse: true };
+    if (connection === "error") return { tone: "danger", label: "Not connected" };
     return { tone: "neutral", label: "Connecting…" };
   })();
 
@@ -188,7 +164,7 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
   const qrOverlay = !online && (
     <div className="absolute inset-0 grid place-items-center">
       <span className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-medium text-ink-700 shadow-card">
-        {openState === "error" ? openError : <><Spinner /> Connecting…</>}
+        {connection === "error" ? connectionError : <><Spinner /> Connecting…</>}
       </span>
     </div>
   );
@@ -372,7 +348,6 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
                   disabled={entries.length === 0}
                   onClick={() => {
                     setEntries([]);
-                    socket.emit("store:clear", () => {});
                     setMenuOpen(false);
                   }}
                   className="w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-ink-50 disabled:text-ink-300"
