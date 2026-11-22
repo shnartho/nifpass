@@ -7,12 +7,12 @@ Customers in Portugal share their NIF with a store without saying it out loud:
 | Route    | Who      | Device                  |
 | -------- | -------- | ----------------------- |
 | `/store` | Store    | Laptop, tablet or phone |
-| `/user`  | Customer | Mobile phone            |
+| `/`      | Customer | Mobile phone            |
 
 ## Architecture: pay per scan, nothing running while idle
 
 ```
- Store screen (/store)                    Vercel (Next.js API routes)                Customer phone (/user)
+ Store screen (/store)                    Vercel (Next.js API routes)                Customer phone (/)
  ─────────────────────                    ───────────────────────────                ──────────────────────
  POST /api/store/token ─────────────────► verify store secret, issue Ably token
  subscribe + presence on                                                              scan QR ─► storeId
@@ -32,7 +32,7 @@ src/
   app/api/store/token/route.ts    Verifies store ownership, issues a scoped Ably token
   app/api/stores/[storeId]/route.ts  Is the store open? (Ably presence) + store name
   app/api/share/route.ts          Validates the NIF and publishes it to that store's channel
-  app/store, app/user             Pages
+  app/page.tsx, app/store         Pages (customer app on the home page; /user redirects to /)
   components/merchant/*           Store sign-in and dashboard
   components/user/*               Customer mobile app
   lib/server/ably.ts              Server-side Ably client and ownership check
@@ -54,7 +54,7 @@ src/
 ### How a share works
 
 1. The store screen gets a token and subscribes to `nifpass:store:<storeId>`. It enters presence with its store name, which marks the store as "open".
-2. The customer scans the QR (`https://<domain>/user?s=<storeId>`). The phone calls `GET /api/stores/<storeId>`, which returns the store name, or *Store not available* if no screen is open.
+2. The customer scans the QR (`https://<domain>/?s=<storeId>`; older `/user?s=` codes redirect). The phone calls `GET /api/stores/<storeId>`, which returns the store name, or *Store not available* if no screen is open.
 3. After **Confirm and Share**, or straight away if the customer turned on *Share automatically*, the phone calls `POST /api/share`. The server checks the NIF format, checks that the store is open, and publishes the NIF **only to that store's channel**.
 4. The store screen shows it at once, large, with a pop-up. In testing, delivery takes about 130–160 ms.
 
@@ -91,7 +91,7 @@ Phone cameras and store sign-in need **HTTPS**. To test with a real phone, expos
 
 1. **Store A**: open `/store` → **Create store**. You get a dashboard with the store on the left, its permanent QR in the middle and *Received NIFs* on the right, with the status *Open · receiving NIFs*.
 2. **Store B**: in another browser, create a second store. It gets a different QR.
-3. **Customer**: open `/user` → **My NIF** → `123456789` → **Scan Store QR** → scan Store A's QR → *"Pastelaria A will receive the NIF below."* → **Confirm and Share**.
+3. **Customer**: open the home page `/` → **My NIF** → `123456789` → **Scan Store QR** → scan Store A's QR → *"Pastelaria A will receive the NIF below."* → **Confirm and Share**.
 4. Only Store A shows the NIF, large, with a Europe/Lisbon time and a pop-up.
 5. Close all of Store A's screens and scan again: the phone shows *Store not available*.
 6. **Show QR code** off: hides the on-screen QR (for stores with a printed QR). **Download QR to print** saves a poster PNG.

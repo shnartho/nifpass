@@ -77,22 +77,12 @@ export function NifForm({ initialValue, initialAutoShare, notice, onSave, onBack
           </span>
         </div>
         <p id="nif-help" className={`mt-2 min-h-5 text-sm ${error ? "text-rose-600" : "text-ink-400"}`}>
-          {error ?? "Exactly 9 digits, numbers only."}
+          {error ?? "9 digits"}
         </p>
 
-        <label
-          htmlFor="auto-share"
-          className={`mt-4 flex cursor-pointer items-start gap-4 rounded-2xl border p-4 transition ${
-            autoShare ? "border-brand-300 bg-brand-50/60" : "border-ink-200 bg-white"
-          }`}
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block font-medium text-ink-900">Share automatically after scanning</span>
-            <span className="mt-1 block text-sm text-ink-500">
-              Skip the confirmation step. Your NIF is sent as soon as you scan a store&apos;s NIFPass QR code.
-            </span>
-          </span>
-          <span className="relative mt-1 inline-flex shrink-0">
+        <label htmlFor="auto-share" className="mt-4 flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-ink-200 p-4">
+          <span className="font-medium text-ink-900">Share automatically when I scan</span>
+          <span className="relative inline-flex shrink-0">
             <input
               id="auto-share"
               type="checkbox"
@@ -105,18 +95,6 @@ export function NifForm({ initialValue, initialAutoShare, notice, onSave, onBack
             <span className="absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
           </span>
         </label>
-
-        <p className="mt-4 flex gap-2 rounded-2xl bg-amber-50 px-3 py-2.5 text-xs text-amber-800 ring-1 ring-inset ring-amber-200">
-          <span className="shrink-0 rounded bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">
-            Test mode
-          </span>
-          Only the 9-digit format is checked. This prototype does not verify that it is a valid Portuguese NIF.
-        </p>
-
-        <p className="mt-3 text-xs text-ink-400">
-          Your NIF stays on this device for this browser session. It is only sent to a store after you confirm, or when
-          you scan their QR code with automatic sharing on.
-        </p>
       </div>
 
       <div className="mt-5 space-y-2">

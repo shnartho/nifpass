@@ -10,7 +10,9 @@ import { parseQrPayload } from "@/lib/qrPayload";
 import { useOnline } from "@/lib/useOnline";
 import { STORE_QUERY_PARAM, isValidNif, isValidStoreId } from "@/shared/protocol";
 import { NifForm } from "./NifForm";
+import { InstallSheet } from "./InstallSheet";
 import { QrScanner, type CameraErrorKind } from "./QrScanner";
+import { useInstallPrompt } from "@/lib/useInstallPrompt";
 
 type Screen = "home" | "nif" | "scan" | "connecting" | "confirm" | "sharing" | "success" | "error";
 
@@ -26,8 +28,8 @@ interface ScreenError extends FriendlyError {
 
 const NIF_STORAGE_KEY = "nifpass.customer.nif";
 const AUTO_SHARE_STORAGE_KEY = "nifpass.customer.autoShare";
-const PRIVACY_MESSAGE =
-  "Your NIF is shared only after your confirmation. This demonstration does not permanently store your NIF.";
+const PRIVACY_MESSAGE = "Your NIF goes only to the store you scan. We never store it.";
+const HEADLINE_WORDS = ["fast.", "securely.", "privately.", "in one scan."];
 
 const cameraErrors: Record<CameraErrorKind, FriendlyError> = {
   denied: {
@@ -53,7 +55,7 @@ export default function UserApp() {
 
   const [screen, setScreenState] = useState<Screen>("home");
   const [nif, setNifState] = useState<string | null>(null);
-  const [autoShare, setAutoShareState] = useState(false);
+  const [autoShare, setAutoShareState] = useState(true);
   const [nifNotice, setNifNotice] = useState<string | null>(null);
   const [merchant, setMerchantState] = useState<StoreLink | null>(null);
   const [error, setError] = useState<ScreenError | null>(null);
@@ -67,7 +69,7 @@ export default function UserApp() {
   const pendingRef = useRef<{ type: "scan" } | { type: "join"; storeId: string } | null>(null);
   const busyRef = useRef(false);
   const nifRef = useRef<string | null>(null);
-  const autoShareRef = useRef(false);
+  const autoShareRef = useRef(true);
 
   const setPrefs = useCallback((value: string | null, auto: boolean) => {
     nifRef.current = value;
@@ -206,7 +208,8 @@ export default function UserApp() {
   useEffect(() => {
     const stored = sessionStorage.getItem(NIF_STORAGE_KEY);
     const savedNif = isValidNif(stored) ? stored : null;
-    setPrefs(savedNif, !!savedNif && sessionStorage.getItem(AUTO_SHARE_STORAGE_KEY) === "true");
+    // Auto-share is on unless the customer switched it off.
+    setPrefs(savedNif, sessionStorage.getItem(AUTO_SHARE_STORAGE_KEY) !== "false");
 
     const params = new URLSearchParams(window.location.search);
     const linked = params.get(STORE_QUERY_PARAM);
@@ -236,7 +239,7 @@ export default function UserApp() {
 
   return (
     <div className="flex min-h-dvh justify-center bg-ink-50 sm:py-8">
-      <div className="relative flex min-h-dvh w-full max-w-md flex-col bg-white sm:min-h-[760px] sm:rounded-[2rem] sm:shadow-card sm:ring-1 sm:ring-ink-100">
+      <div className="relative flex min-h-dvh w-full max-w-md flex-col overflow-hidden bg-white sm:min-h-[760px] sm:rounded-[2rem] sm:shadow-card sm:ring-1 sm:ring-ink-100">
         <header className="flex items-center justify-between gap-3 px-5 pb-2 pt-[max(1rem,env(safe-area-inset-top))]">
           <button type="button" onClick={goHome} className="rounded-xl" aria-label="NIFPass home">
             <Logo size="sm" />
@@ -255,7 +258,7 @@ export default function UserApp() {
 
         <main
           key={screen}
-          className="flex flex-1 animate-fade-up flex-col px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4"
+          className="flex flex-1 animate-fade-up flex-col px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4 short:pb-[max(1rem,env(safe-area-inset-bottom))] short:pt-2"
         >
           {screen === "home" && (
             <HomeScreen nif={nif} autoShare={autoShare} onEditNif={() => setScreen("nif")} onScan={startScan} />
@@ -342,11 +345,6 @@ export default function UserApp() {
                     {formatLisbonDateTime(sharedAt)}
                   </p>
                 )}
-                {autoShare && (
-                  <p className="mt-4 max-w-xs text-xs text-ink-400">
-                    Shared automatically. You can turn this off anytime in My NIF.
-                  </p>
-                )}
               </div>
               <div className="space-y-3 pt-6">
                 <Button size="lg" block onClick={startScan}>
@@ -395,6 +393,25 @@ export default function UserApp() {
   );
 }
 
+function RotatingWord() {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const t = setInterval(() => setIndex((i) => (i + 1) % HEADLINE_WORDS.length), 2200);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <span className="block h-[1.3em] overflow-hidden" aria-hidden>
+      <span
+        key={index}
+        className="block animate-word-in bg-gradient-to-r from-brand-500 to-brand-700 bg-clip-text pb-1 text-transparent"
+      >
+        {HEADLINE_WORDS[index]}
+      </span>
+    </span>
+  );
+}
+
 function HomeScreen({
   nif,
   autoShare,
@@ -406,21 +423,29 @@ function HomeScreen({
   onEditNif: () => void;
   onScan: () => void;
 }) {
+  const { canInstall, isIos, install } = useInstallPrompt();
+  const [showInstallSteps, setShowInstallSteps] = useState(false);
+
+  const onInstall = async () => {
+    if (!(await install())) setShowInstallSteps(true);
+  };
+
   return (
     <div className="flex flex-1 flex-col">
-      <div className="pt-6">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand-600">NIFPass</p>
-        <h1 className="mt-3 text-[2rem] font-semibold leading-tight tracking-tight text-ink-900">
-          Your NIF. One scan. Done.
+      <div className="pt-3 short:pt-0">
+        <h1 className="text-[clamp(1.75rem,9vw,2.25rem)] font-semibold leading-tight tracking-tight text-ink-900">
+          <span className="sr-only">Share your NIF fast and securely</span>
+          <span aria-hidden>Share your NIF</span>
+          <RotatingWord />
         </h1>
-        <p className="mt-3 text-ink-500">Share your Portuguese NIF with stores quickly and securely.</p>
+        <p className="mt-1 text-ink-500 short:text-sm tiny:hidden">Scan a store&apos;s QR. No need to say your NIF out loud.</p>
       </div>
 
-      <div className="mt-8 space-y-3">
+      <div className="mt-6 space-y-3 short:mt-4">
         <button
           type="button"
           onClick={onEditNif}
-          className="flex w-full items-center gap-4 rounded-3xl border border-ink-200 bg-white p-5 text-left shadow-card transition active:scale-[0.99]"
+          className="flex w-full items-center gap-4 rounded-3xl border border-ink-200 bg-white p-4 text-left shadow-card transition active:scale-[0.99]"
         >
           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-600">
             <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden>
@@ -435,7 +460,7 @@ function HomeScreen({
             </span>
             {nif && (
               <span className="mt-1 block text-xs font-medium text-ink-400">
-                {autoShare ? "Auto-share on: no confirmation needed" : "Ask me before each share"}
+                {autoShare ? "Auto-share on" : "Asks before sharing"}
               </span>
             )}
           </span>
@@ -445,7 +470,7 @@ function HomeScreen({
         <button
           type="button"
           onClick={onScan}
-          className="flex w-full items-center gap-4 rounded-3xl bg-gradient-to-br from-brand-500 to-brand-700 p-5 text-left text-white shadow-lift transition active:scale-[0.99]"
+          className="flex w-full items-center gap-4 rounded-3xl bg-gradient-to-br from-brand-500 to-brand-700 p-4 text-left text-white shadow-lift transition active:scale-[0.99]"
         >
           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/15">
             <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden>
@@ -463,13 +488,34 @@ function HomeScreen({
           </span>
           <span aria-hidden>→</span>
         </button>
-      </div>
 
-      <p className="mt-auto flex gap-2 pt-10 text-xs leading-relaxed text-ink-400">
+        {canInstall && (
+          <button
+            type="button"
+            onClick={onInstall}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-brand-200 bg-brand-50/60 px-4 py-3 text-sm font-semibold text-brand-700 transition active:scale-[0.99]"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden>
+              <rect x="6" y="2.5" width="12" height="19" rx="3" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M12 8v6m-3-3h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            Add to Home Screen
+          </button>
+        )}
+      </div>
+      {showInstallSteps && <InstallSheet isIos={isIos} onClose={() => setShowInstallSteps(false)} />}
+
+      <p className="mt-auto flex gap-2 pt-5 text-xs leading-relaxed text-ink-400 short:pt-3">
         <LockIcon />
         {PRIVACY_MESSAGE}
       </p>
-      <p className="mt-3 text-center text-[11px] text-ink-300">NIFPass by GoGentik</p>
+      <p className="mt-3 text-center text-sm text-ink-500 short:mt-2">
+        Are you a store owner?{" "}
+        <a href="/store" className="font-semibold text-brand-600 underline-offset-2 hover:underline">
+          Visit {window.location.host}/store
+        </a>
+      </p>
+      <p className="mt-2 text-center text-[11px] text-ink-300">NIFPass by GoGentik</p>
     </div>
   );
 }

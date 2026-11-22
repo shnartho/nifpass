@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
     return [
       { source: "/shopper", destination: "/store", permanent: false },
       { source: "/merchant", destination: "/store", permanent: false },
+      // Older printed QR codes point to /user?s=...; the query string is kept.
+      { source: "/user", destination: "/", permanent: true },
     ];
   },
   async headers() {

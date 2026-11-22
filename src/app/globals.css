@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Phones with little vertical space (e.g. iPhone SE, small Android). */
+@custom-variant short (@media (max-height: 700px));
+@custom-variant tiny (@media (max-height: 600px));
+
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
@@ -30,6 +34,12 @@
   --animate-fade-up: fade-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-pop: pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
   --animate-scan-line: scan-line 2.2s ease-in-out infinite;
+  --animate-word-in: word-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes word-in {
+    from { opacity: 0; transform: translateY(60%); filter: blur(4px); }
+    to { opacity: 1; transform: translateY(0); filter: blur(0); }
+  }
 
   @keyframes arrive {
     0% { opacity: 0; transform: translateY(-10px); background-color: rgb(101 83 245 / 0.16); }

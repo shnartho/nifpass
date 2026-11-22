@@ -273,7 +273,7 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
             Scan this QR code with your NIFPass app to share your NIF.
           </p>
           <p className="mt-1 text-sm text-ink-400">
-            Open <span className="font-medium text-ink-600">{host}/user</span> on your mobile phone and scan this code.
+            Open <span className="font-medium text-ink-600">{host}</span> on your mobile phone and scan this code.
           </p>
           {isLocal && (
             <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-inset ring-amber-200">
