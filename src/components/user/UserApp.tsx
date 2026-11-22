@@ -183,8 +183,8 @@ export default function UserApp() {
   }, [nif, leaveMerchant, setScreen]);
 
   const saveNif = (value: string, auto: boolean) => {
-    sessionStorage.setItem(NIF_STORAGE_KEY, value);
-    sessionStorage.setItem(AUTO_SHARE_STORAGE_KEY, String(auto));
+    localStorage.setItem(NIF_STORAGE_KEY, value);
+    localStorage.setItem(AUTO_SHARE_STORAGE_KEY, String(auto));
     setPrefs(value, auto);
     setNifNotice(null);
     const pending = pendingRef.current;
@@ -206,10 +206,11 @@ export default function UserApp() {
 
   // Load the saved NIF and handle QR links opened with the phone's native camera.
   useEffect(() => {
-    const stored = sessionStorage.getItem(NIF_STORAGE_KEY);
+    // Kept on the device (not just the tab) so it survives closing the home-screen app.
+    const stored = localStorage.getItem(NIF_STORAGE_KEY);
     const savedNif = isValidNif(stored) ? stored : null;
     // Auto-share is on unless the customer switched it off.
-    setPrefs(savedNif, sessionStorage.getItem(AUTO_SHARE_STORAGE_KEY) !== "false");
+    setPrefs(savedNif, localStorage.getItem(AUTO_SHARE_STORAGE_KEY) !== "false");
 
     const params = new URLSearchParams(window.location.search);
     const linked = params.get(STORE_QUERY_PARAM);

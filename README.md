@@ -62,7 +62,7 @@ src/
 
 - NIFs are never put in the QR code or a URL, never stored in a database, and never logged. Make sure **message persistence is off** in Ably (it is by default).
 - On the store screen, received NIFs live only in that tab's `sessionStorage`. They are cleared by **Clear**, by **Sign out**, or when the tab closes.
-- The customer's NIF stays in their tab's `sessionStorage`. It is sent only after confirmation, or after the customer's one-time opt-in to automatic sharing.
+- The customer's NIF is saved only on their own device (`localStorage`), so it survives closing the app. It is never stored on a server. It is sent only when they scan a store's QR (automatic sharing, on by default) or after they confirm.
 - `ABLY_API_KEY` is server-only. Store screens get short-lived tokens limited to their own channel.
 - The API routes have basic per-instance rate limiting. On serverless, use Vercel's firewall or an Upstash rate limiter for stronger limits.
 
