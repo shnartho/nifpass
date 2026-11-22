@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: "NIFPass",
     short_name: "NIFPass",
     description: "Share your Portuguese NIF with stores in one scan.",

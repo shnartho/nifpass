@@ -6,6 +6,7 @@ import { Logo } from "@/components/Logo";
 import {
   MIN_PASSWORD_LENGTH,
   deriveStoreCredentials,
+  fetchRemoteProfile,
   getSavedProfile,
   normalizeEmail,
   type StoreAccount,
@@ -76,11 +77,11 @@ export function StoreAuth({ onSignedIn }: { onSignedIn: (account: StoreAccount) 
     setBusy(true);
     try {
       const creds = await deriveStoreCredentials(email, password);
+      // Same email + password = same store: reuse its saved profile from any device.
+      const profile = (await fetchRemoteProfile(creds)) ?? getSavedProfile(creds.storeId);
+      if (profile) return finish(creds, profile.name, profile.location);
       if (mode === "register" && cleanName) return finish(creds, cleanName, location);
 
-      const profile = getSavedProfile(creds.storeId);
-      if (profile) return finish(creds, profile.name, profile.location);
-      // First sign-in on this device: the store name isn't known here yet.
       setPending(creds);
       setMode("profile");
     } catch (err) {

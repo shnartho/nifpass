@@ -434,7 +434,7 @@ function HomeScreen({
   return (
     <div className="flex flex-1 flex-col">
       <div className="pt-3 short:pt-0">
-        <h1 className="text-[clamp(1.75rem,9vw,2.25rem)] font-semibold leading-tight tracking-tight text-ink-900">
+        <h1 className="text-[clamp(1.75rem,9vw,2.25rem)] font-semibold leading-tight tracking-tight text-ink-900 short:text-[1.6rem]">
           <span className="sr-only">Share your NIF fast and securely</span>
           <span aria-hidden>Share your NIF</span>
           <RotatingWord />
@@ -442,13 +442,13 @@ function HomeScreen({
         <p className="mt-1 text-ink-500 short:text-sm tiny:hidden">Scan a store&apos;s QR. No need to say your NIF out loud.</p>
       </div>
 
-      <div className="mt-6 space-y-3 short:mt-4">
+      <div className="mt-6 space-y-3 short:mt-3 short:space-y-2">
         <button
           type="button"
           onClick={onEditNif}
-          className="flex w-full items-center gap-4 rounded-3xl border border-ink-200 bg-white p-4 text-left shadow-card transition active:scale-[0.99]"
+          className="flex w-full items-center gap-4 rounded-3xl border border-ink-200 bg-white p-4 text-left shadow-card transition active:scale-[0.99] short:gap-3 short:px-3 short:py-2.5"
         >
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-600">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-600 short:h-10 short:w-10">
             <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden>
               <rect x="3" y="5" width="18" height="14" rx="3" stroke="currentColor" strokeWidth="1.8" />
               <path d="M7 10h4M7 14h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -460,7 +460,7 @@ function HomeScreen({
               {nif ? groupNif(nif) : "Add your NIF to get started"}
             </span>
             {nif && (
-              <span className="mt-1 block text-xs font-medium text-ink-400">
+              <span className="mt-1 block text-xs font-medium text-ink-400 tiny:hidden">
                 {autoShare ? "Auto-share on" : "Asks before sharing"}
               </span>
             )}
@@ -471,9 +471,9 @@ function HomeScreen({
         <button
           type="button"
           onClick={onScan}
-          className="flex w-full items-center gap-4 rounded-3xl bg-gradient-to-br from-brand-500 to-brand-700 p-4 text-left text-white shadow-lift transition active:scale-[0.99]"
+          className="flex w-full items-center gap-4 rounded-3xl bg-gradient-to-br from-brand-500 to-brand-700 p-4 text-left text-white shadow-lift transition active:scale-[0.99] short:gap-3 short:px-3 short:py-2.5"
         >
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/15">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/15 short:h-10 short:w-10">
             <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden>
               <path
                 d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M4 12h16"
@@ -490,11 +490,31 @@ function HomeScreen({
           <span aria-hidden>→</span>
         </button>
 
+        <div
+          aria-disabled="true"
+          className="flex w-full items-center gap-4 rounded-3xl border border-dashed border-ink-200 p-4 short:gap-3 short:px-3 short:py-2"
+        >
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-ink-100 text-ink-400 short:h-9 short:w-9">
+            <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden>
+              <path
+                d="M8.5 8.5a5 5 0 0 1 0 7M12 6a8.5 8.5 0 0 1 0 12M15.5 3.5a12 12 0 0 1 0 17M5 11a1.5 1.5 0 0 1 0 2"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          </span>
+          <span className="flex-1">
+            <span className="block font-semibold text-ink-500">Share with NFC</span>
+            <span className="block text-sm text-ink-400">Coming soon</span>
+          </span>
+        </div>
+
         {canInstall && (
           <button
             type="button"
             onClick={onInstall}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-brand-200 bg-brand-50/60 px-4 py-3 text-sm font-semibold text-brand-700 transition active:scale-[0.99]"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-brand-200 bg-brand-50/60 px-4 py-3 text-sm font-semibold text-brand-700 transition active:scale-[0.99] short:py-2"
           >
             <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden>
               <rect x="6" y="2.5" width="12" height="19" rx="3" stroke="currentColor" strokeWidth="1.8" />
@@ -516,7 +536,7 @@ function HomeScreen({
           Visit {window.location.host}/store
         </a>
       </p>
-      <p className="mt-2 text-center text-[11px] text-ink-300">NIFPass by GoGentik</p>
+      <p className="mt-2 text-center text-[11px] text-ink-300 short:hidden">NIFPass by GoGentik</p>
     </div>
   );
 }

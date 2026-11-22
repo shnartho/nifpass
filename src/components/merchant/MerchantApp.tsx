@@ -7,7 +7,15 @@ import { Logo } from "@/components/Logo";
 import { StatusPill, type StatusTone } from "@/components/StatusPill";
 import { formatLisbonDay, formatLisbonTime } from "@/lib/format";
 import { buildQrPayload, publicBaseUrl } from "@/lib/qrPayload";
-import { clearAccount, loadAccount, saveAccount, type StoreAccount } from "@/lib/storeAuth";
+import {
+  clearAccount,
+  loadAccount,
+  saveAccount,
+  saveRemoteProfile,
+  type StoreAccount,
+} from "@/lib/storeAuth";
+import { useInstallPrompt } from "@/lib/useInstallPrompt";
+import { InstallSheet } from "@/components/user/InstallSheet";
 import { useStoreChannel } from "@/lib/useStoreChannel";
 import type { NifEntry } from "@/shared/protocol";
 import { LatestNif, NifHistory } from "./NifFeed";
@@ -18,12 +26,12 @@ import { StoreQr } from "./StoreQr";
 // Stores with a printed QR at the counter can hide the on-screen one.
 const SHOW_QR_KEY = "nifpass.store.showQr";
 const MAX_ENTRIES = 100;
-// Per-tab only: survives a reload but is gone when the tab closes.
+// Kept on this device so reopening the app (or the home-screen app) shows them again.
 const entriesKey = (storeId: string) => `nifpass.store.entries.${storeId}`;
 
 function loadEntries(storeId: string): NifEntry[] {
   try {
-    return JSON.parse(sessionStorage.getItem(entriesKey(storeId)) ?? "[]");
+    return JSON.parse(localStorage.getItem(entriesKey(storeId)) ?? "[]");
   } catch {
     return [];
   }
@@ -116,13 +124,25 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
 
   const dismissToast = useCallback((id: string) => setToasts((cur) => cur.filter((t) => t.id !== id)), []);
 
+  const { canInstall, isIos, install } = useInstallPrompt({ mobileOnly: false });
+  const [showInstallSteps, setShowInstallSteps] = useState(false);
+  const onInstall = async () => {
+    setMenuOpen(false);
+    if (!(await install())) setShowInstallSteps(true);
+  };
+
+  // Keeps the server copy of the profile up to date so this login works on other devices.
+  useEffect(() => {
+    void saveRemoteProfile(account);
+  }, [account]);
+
   const { state: connection, error: connectionError } = useStoreChannel(account, (entry) => {
     setEntries((cur) => mergeEntries(cur, [entry]));
     setToasts([entry]);
   });
 
   useEffect(() => {
-    sessionStorage.setItem(entriesKey(account.storeId), JSON.stringify(entries));
+    localStorage.setItem(entriesKey(account.storeId), JSON.stringify(entries));
   }, [account.storeId, entries]);
 
   useEffect(() => {
@@ -139,7 +159,7 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
 
   const signOut = () => {
     if (!window.confirm("Sign out? This screen will stop receiving NIFs until you sign in again.")) return;
-    sessionStorage.removeItem(entriesKey(account.storeId));
+    localStorage.removeItem(entriesKey(account.storeId));
     onSignOut();
   };
 
@@ -186,6 +206,14 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
   return (
     <div className="h-dvh overflow-hidden bg-ink-50">
       <NifToasts toasts={toasts} onDismiss={dismissToast} />
+      {showInstallSteps && (
+        <InstallSheet
+          isIos={isIos}
+          appName="NIFPass Store"
+          iconSrc="/icons/store-icon-192.png"
+          onClose={() => setShowInstallSteps(false)}
+        />
+      )}
       <QRCodeCanvas ref={posterRef} value={qrPayload} size={900} level="M" marginSize={2} className="hidden" />
 
       {/* ---------- Desktop / laptop: 3 columns, no page scroll ---------- */}
@@ -250,6 +278,11 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
           </label>
 
           <div className="mt-auto space-y-2 pt-6">
+            {canInstall && (
+              <Button variant="secondary" block onClick={onInstall}>
+                Add to Home Screen
+              </Button>
+            )}
             <Button variant="secondary" block onClick={downloadQr}>
               Download QR to print
             </Button>
@@ -302,7 +335,7 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
           <div className="mt-1 min-h-0 flex-1 overflow-y-auto pr-1">
             <NifHistory entries={earlier} />
           </div>
-          <p className="pt-3 text-[11px] text-ink-300">Times in Europe/Lisbon · kept in temporary memory only</p>
+          <p className="pt-3 text-[11px] text-ink-300">Times in Europe/Lisbon · saved on this device only</p>
         </section>
       </div>
 
@@ -330,6 +363,11 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
                 <button type="button" onClick={toggleQr} className="w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-ink-50">
                   {showQr ? "Hide QR code" : "Show QR code"}
                 </button>
+                {canInstall && (
+                  <button type="button" onClick={onInstall} className="w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-ink-50">
+                    Add to Home Screen
+                  </button>
+                )}
                 <button type="button" onClick={downloadQr} className="w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-ink-50">
                   Download QR to print
                 </button>

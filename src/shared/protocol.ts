@@ -38,6 +38,19 @@ export interface StorePresence {
   name: string;
 }
 
+/** Public store details kept server-side so the same login works on any device. */
+export interface StoreProfile {
+  name: string;
+  location: string;
+}
+
+export const STORE_LOCATION_MAX = 80;
+
+export function sanitizeLocation(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim().slice(0, STORE_LOCATION_MAX);
+}
+
 export interface StoreTokenRequestBody {
   storeId: string;
   secret: string;

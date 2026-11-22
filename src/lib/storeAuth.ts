@@ -1,4 +1,5 @@
-import { STORE_ID_HASH_PREFIX } from "@/shared/protocol";
+import { api } from "@/lib/api";
+import { STORE_ID_HASH_PREFIX, type StoreProfile } from "@/shared/protocol";
 
 /**
  * Store accounts without a database: email + password are stretched with PBKDF2
@@ -11,11 +12,6 @@ export interface StoreAccount {
   storeId: string;
   secret: string;
   email: string;
-  name: string;
-  location: string;
-}
-
-interface StoreProfile {
   name: string;
   location: string;
 }
@@ -82,4 +78,26 @@ export function saveAccount(account: StoreAccount) {
 
 export function clearAccount() {
   localStorage.removeItem(ACCOUNT_KEY);
+}
+
+type Creds = { storeId: string; secret: string };
+
+/** The store's profile saved on the server, or null if none (or unreachable). */
+export async function fetchRemoteProfile(creds: Creds): Promise<StoreProfile | null> {
+  const res = await api<{ profile: StoreProfile | null }>("/api/store/profile", creds);
+  return res.ok ? res.profile : null;
+}
+
+/** Best effort: lets the same email + password open this store on other devices. */
+export async function saveRemoteProfile(account: StoreAccount): Promise<void> {
+  await fetch("/api/store/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      storeId: account.storeId,
+      secret: account.secret,
+      name: account.name,
+      location: account.location,
+    }),
+  }).catch(() => {});
 }

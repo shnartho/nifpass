@@ -15,6 +15,7 @@
   "dependencies": {
     "@ably/pubsub-device": "^3.2.0",
     "@ably/pubsub-server": "^3.2.0",
+    "@vercel/blob": "^2.9.0",
     "html5-qrcode": "^2.3.8",
     "next": "^15.5.0",
     "qrcode.react": "^4.2.0",

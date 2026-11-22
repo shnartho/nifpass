@@ -17,7 +17,7 @@ declare global {
  * "Add to Home Screen" support. Android/Chromium offer a native install prompt;
  * iOS has none, so callers show manual steps (Share → Add to Home Screen) instead.
  */
-export function useInstallPrompt() {
+export function useInstallPrompt({ mobileOnly = true }: { mobileOnly?: boolean } = {}) {
   const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(() => window.__nifpassInstall ?? null);
   const [installed, setInstalled] = useState(
     () => window.matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true,
@@ -52,5 +52,6 @@ export function useInstallPrompt() {
     return true;
   }, [promptEvent]);
 
-  return { canInstall: isMobile && !installed, isIos, install };
+  // Desktop is only offered when the browser itself supports installing (e.g. Chrome, Edge).
+  return { canInstall: !installed && (isMobile || (!mobileOnly && promptEvent !== null)), isIos, install };
 }

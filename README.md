@@ -49,6 +49,7 @@ src/
   - The same email and password give the same QR on any device.
 - `POST /api/store/token` only issues an Ably token if the secret hashes to the store id. The token can only **subscribe** and **enter presence** on that store's own channel. So knowing a QR (the public id) is not enough to receive a store's NIFs.
 - Several screens can be signed in to one store, and they all receive the NIFs.
+- The store's **name and location** are saved in **Vercel Blob** (private) by `POST/PUT /api/store/profile`, which only works with the store's secret. This lets the same email and password open the same store on any phone or browser. Emails, passwords and NIFs are never stored there. Without `BLOB_READ_WRITE_TOKEN`, a new device just asks for the store name once.
 - There's no password reset. A forgotten password means creating a new store (and a new QR).
 
 ### How a share works
@@ -61,7 +62,8 @@ src/
 ### Privacy and security
 
 - NIFs are never put in the QR code or a URL, never stored in a database, and never logged. Make sure **message persistence is off** in Ably (it is by default).
-- On the store screen, received NIFs live only in that tab's `sessionStorage`. They are cleared by **Clear**, by **Sign out**, or when the tab closes.
+- On the store screen, received NIFs (last 100) are saved on that device (`localStorage`), so they're still there after closing and reopening the app. They are removed by **Clear** or **Sign out**.
+- Two home-screen apps: **NIFPass** (customers, `/manifest.webmanifest`) and **NIFPass Store** (store owners, `/store-app.webmanifest`, opens `/store`).
 - The customer's NIF is saved only on their own device (`localStorage`), so it survives closing the app. It is never stored on a server. It is sent only when they scan a store's QR (automatic sharing, on by default) or after they confirm.
 - `ABLY_API_KEY` is server-only. Store screens get short-lived tokens limited to their own channel.
 - The API routes have basic per-instance rate limiting. On serverless, use Vercel's firewall or an Upstash rate limiter for stronger limits.

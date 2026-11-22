@@ -12,17 +12,27 @@ function ShareIcon() {
 }
 
 /** Manual "Add to Home Screen" steps for browsers without a native install prompt (e.g. iPhone). */
-export function InstallSheet({ isIos, onClose }: { isIos: boolean; onClose: () => void }) {
+export function InstallSheet({
+  isIos,
+  onClose,
+  appName = "NIFPass",
+  iconSrc = "/icons/icon-192.png",
+}: {
+  isIos: boolean;
+  onClose: () => void;
+  appName?: string;
+  iconSrc?: string;
+}) {
   const steps = isIos
     ? [
         <>Tap <ShareIcon /> <b>Share</b> in the browser bar</>,
         <>Scroll and tap <b>Add to Home Screen</b></>,
-        <>Tap <b>Add</b>. NIFPass appears like an app.</>,
+        <>Tap <b>Add</b>. {appName} appears like an app.</>,
       ]
     : [
         <>Open the browser menu <b>⋮</b></>,
         <>Tap <b>Add to Home screen</b> or <b>Install app</b></>,
-        <>Confirm. NIFPass appears like an app.</>,
+        <>Confirm. {appName} appears like an app.</>,
       ];
 
   return (
@@ -33,9 +43,9 @@ export function InstallSheet({ isIos, onClose }: { isIos: boolean; onClose: () =
       >
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/icons/icon-192.png" alt="" className="h-12 w-12 rounded-xl" />
+          <img src={iconSrc} alt="" className="h-12 w-12 rounded-xl" />
           <div>
-            <p className="font-semibold text-ink-900">Add NIFPass to your Home Screen</p>
+            <p className="font-semibold text-ink-900">Add {appName} to your Home Screen</p>
             <p className="text-sm text-ink-500">Open it in one tap, like an app.</p>
           </div>
         </div>
