@@ -10,6 +10,7 @@ import { parseQrPayload } from "@/lib/qrPayload";
 import { useOnline } from "@/lib/useOnline";
 import { STORE_QUERY_PARAM, isValidNif, isValidStoreId } from "@/shared/protocol";
 import { NifForm } from "./NifForm";
+import { PlatformLogos } from "@/components/PlatformLogos";
 import { InstallSheet } from "./InstallSheet";
 import { QrScanner, type CameraErrorKind } from "./QrScanner";
 import { useInstallPrompt } from "@/lib/useInstallPrompt";
@@ -509,33 +510,31 @@ function HomeScreen({
             <span className="block text-sm text-ink-400">Coming soon</span>
           </span>
         </div>
+      </div>
+      {showInstallSteps && <InstallSheet isIos={isIos} onClose={() => setShowInstallSteps(false)} />}
 
+      <div className="mt-auto pt-5 short:pt-3">
         {canInstall && (
           <button
             type="button"
             onClick={onInstall}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-brand-200 bg-brand-50/60 px-4 py-3 text-sm font-semibold text-brand-700 transition active:scale-[0.99] short:py-2"
+            className="mb-4 flex w-full items-center justify-center gap-2.5 rounded-2xl bg-ink-900 px-4 py-3 text-sm font-semibold text-white transition active:scale-[0.99] short:mb-3 short:py-2.5"
           >
-            <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden>
-              <rect x="6" y="2.5" width="12" height="19" rx="3" stroke="currentColor" strokeWidth="1.8" />
-              <path d="M12 8v6m-3-3h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-            Add to Home Screen
+            <PlatformLogos />
+            Install
           </button>
         )}
+        <p className="flex gap-2 text-xs leading-relaxed text-ink-400">
+          <LockIcon />
+          {PRIVACY_MESSAGE}
+        </p>
+        <p className="mt-2 text-center text-xs text-ink-400">
+          Are you a store owner?{" "}
+          <a href="/store" className="font-semibold text-brand-600 underline underline-offset-2">
+            Visit here
+          </a>
+        </p>
       </div>
-      {showInstallSteps && <InstallSheet isIos={isIos} onClose={() => setShowInstallSteps(false)} />}
-
-      <p className="mt-auto flex gap-2 pt-5 text-xs leading-relaxed text-ink-400 short:pt-3">
-        <LockIcon />
-        {PRIVACY_MESSAGE}
-      </p>
-      <p className="mt-3 text-center text-sm text-ink-500 short:mt-2">
-        Are you a store owner?{" "}
-        <a href="/store" className="font-semibold text-brand-600 underline-offset-2 hover:underline">
-          Visit {window.location.host}/store
-        </a>
-      </p>
       <p className="mt-2 text-center text-[11px] text-ink-300 short:hidden">NIFPass by GoGentik</p>
     </div>
   );

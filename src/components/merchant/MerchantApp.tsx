@@ -16,6 +16,7 @@ import {
 } from "@/lib/storeAuth";
 import { useInstallPrompt } from "@/lib/useInstallPrompt";
 import { InstallSheet } from "@/components/user/InstallSheet";
+import { PlatformLogos } from "@/components/PlatformLogos";
 import { useStoreChannel } from "@/lib/useStoreChannel";
 import type { NifEntry } from "@/shared/protocol";
 import { LatestNif, NifHistory } from "./NifFeed";
@@ -280,7 +281,8 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
           <div className="mt-auto space-y-2 pt-6">
             {canInstall && (
               <Button variant="secondary" block onClick={onInstall}>
-                Add to Home Screen
+                <PlatformLogos />
+                Install
               </Button>
             )}
             <Button variant="secondary" block onClick={downloadQr}>
@@ -364,8 +366,9 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
                   {showQr ? "Hide QR code" : "Show QR code"}
                 </button>
                 {canInstall && (
-                  <button type="button" onClick={onInstall} className="w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-ink-50">
-                    Add to Home Screen
+                  <button type="button" onClick={onInstall} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-ink-50">
+                    <PlatformLogos />
+                    Install
                   </button>
                 )}
                 <button type="button" onClick={downloadQr} className="w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-ink-50">
