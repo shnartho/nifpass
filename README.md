@@ -49,7 +49,7 @@ src/
   - The same email and password give the same QR on any device.
 - `POST /api/store/token` only issues an Ably token if the secret hashes to the store id. The token can only **subscribe** and **enter presence** on that store's own channel. So knowing a QR (the public id) is not enough to receive a store's NIFs.
 - Several screens can be signed in to one store, and they all receive the NIFs.
-- The store's **name and location** are saved in **Vercel Blob** (private) by `POST/PUT /api/store/profile`, which only works with the store's secret. This lets the same email and password open the same store on any phone or browser. Emails, passwords and NIFs are never stored there. Without `BLOB_READ_WRITE_TOKEN`, a new device just asks for the store name once.
+- The store's **name and location** are saved in **Vercel Blob** (private) by `POST/PUT /api/store/profile`, which only works with the store's secret. This lets the same email and password open the same store on any phone or browser. Emails, passwords and NIFs are never stored there. Without a connected Blob store (`BLOB_STORE_ID` or `BLOB_READ_WRITE_TOKEN`), a new device just asks for the store name once.
 - There's no password reset. A forgotten password means creating a new store (and a new QR).
 
 ### How a share works

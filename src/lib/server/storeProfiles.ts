@@ -4,7 +4,8 @@ import { sanitizeLocation, sanitizeStoreName, type StoreProfile } from "@/shared
 // Only the store name and location are kept; never emails, passwords or NIFs.
 const pathFor = (storeId: string) => `stores/${storeId}.json`;
 
-export const profilesEnabled = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+// Connected stores authenticate via OIDC (BLOB_STORE_ID) by default; a read-write token also works.
+export const profilesEnabled = () => Boolean(process.env.BLOB_STORE_ID || process.env.BLOB_READ_WRITE_TOKEN);
 
 export async function readProfile(storeId: string): Promise<StoreProfile | null> {
   const res = await get(pathFor(storeId), { access: "private", useCache: false });
