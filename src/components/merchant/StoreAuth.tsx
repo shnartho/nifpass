@@ -3,19 +3,17 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/Button";
 import { Logo } from "@/components/Logo";
+import { friendlyError } from "@/lib/errors";
 import {
   MIN_PASSWORD_LENGTH,
-  deriveStoreCredentials,
-  fetchRemoteProfile,
-  getSavedProfile,
-  normalizeEmail,
+  deriveCredentials,
+  registerStore,
+  signInStore,
   type StoreAccount,
 } from "@/lib/storeAuth";
-import { STORE_NAME_MAX, sanitizeStoreName } from "@/shared/protocol";
+import { EMAIL_RE, STORE_LOCATION_MAX, STORE_NAME_MAX, sanitizeLocation, sanitizeStoreName } from "@/shared/protocol";
 
-type Mode = "register" | "signin" | "profile";
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+type Mode = "register" | "signin";
 
 function Field({
   label,
@@ -38,34 +36,29 @@ function Field({
 const inputClass =
   "h-12 w-full rounded-xl border border-ink-200 bg-white px-4 text-ink-900 outline-none transition placeholder:text-ink-300 focus:border-brand-500 focus:ring-4 focus:ring-brand-100";
 
-export function StoreAuth({ onSignedIn }: { onSignedIn: (account: StoreAccount) => void }) {
-  const [mode, setMode] = useState<Mode>("register");
+export function StoreAuth({
+  notice = null,
+  onSignedIn,
+}: {
+  notice?: string | null;
+  onSignedIn: (account: StoreAccount) => void;
+}) {
+  const [mode, setMode] = useState<Mode>(notice ? "signin" : "register");
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(notice);
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<{ storeId: string; secret: string } | null>(null);
 
   const switchMode = (m: Mode) => {
     setMode(m);
     setError(null);
   };
 
-  const finish = (creds: { storeId: string; secret: string }, storeName: string, storeLocation: string) =>
-    onSignedIn({ ...creds, email: normalizeEmail(email), name: storeName, location: storeLocation.trim() });
-
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    if (mode === "profile") {
-      const clean = sanitizeStoreName(name);
-      if (!clean) return setError("Please enter your store name.");
-      if (pending) finish(pending, clean, location);
-      return;
-    }
 
     const cleanName = mode === "register" ? sanitizeStoreName(name) : null;
     if (mode === "register" && !cleanName) return setError("Please enter your store name.");
@@ -76,14 +69,13 @@ export function StoreAuth({ onSignedIn }: { onSignedIn: (account: StoreAccount) 
 
     setBusy(true);
     try {
-      const creds = await deriveStoreCredentials(email, password);
-      // Same email + password = same store: reuse its saved profile from any device.
-      const profile = (await fetchRemoteProfile(creds)) ?? getSavedProfile(creds.storeId);
-      if (profile) return finish(creds, profile.name, profile.location);
-      if (mode === "register" && cleanName) return finish(creds, cleanName, location);
-
-      setPending(creds);
-      setMode("profile");
+      const creds = await deriveCredentials(email, password);
+      const res =
+        mode === "register" && cleanName
+          ? await registerStore(creds, cleanName, sanitizeLocation(location))
+          : await signInStore(creds);
+      if (res.ok) return onSignedIn(res.account);
+      setError(friendlyError(res.code).message);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -122,34 +114,28 @@ export function StoreAuth({ onSignedIn }: { onSignedIn: (account: StoreAccount) 
             <Logo showByline />
           </div>
 
-          {mode !== "profile" && (
-            <div className="mt-8 grid grid-cols-2 rounded-xl bg-ink-100 p-1 text-sm font-semibold lg:mt-0">
-              {(["register", "signin"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => switchMode(m)}
-                  className={`rounded-lg py-2 transition ${mode === m ? "bg-white text-ink-900 shadow-card" : "text-ink-500"}`}
-                >
-                  {m === "register" ? "Create store" : "Sign in"}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="mt-8 grid grid-cols-2 rounded-xl bg-ink-100 p-1 text-sm font-semibold lg:mt-0">
+            {(["register", "signin"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => switchMode(m)}
+                className={`rounded-lg py-2 transition ${mode === m ? "bg-white text-ink-900 shadow-card" : "text-ink-500"}`}
+              >
+                {m === "register" ? "Create store" : "Sign in"}
+              </button>
+            ))}
+          </div>
 
           <h2 className="mt-8 text-2xl font-semibold tracking-tight text-ink-900">
-            {mode === "register" ? "Create your store" : mode === "signin" ? "Welcome back" : "Name your store"}
+            {mode === "register" ? "Create your store" : "Welcome back"}
           </h2>
           <p className="mt-1 text-sm text-ink-500">
-            {mode === "register"
-              ? "Get your store's permanent NIFPass QR code."
-              : mode === "signin"
-                ? "Sign in to open your store's QR code."
-                : "First time on this device. What's your store called?"}
+            {mode === "register" ? "Get your store's permanent NIFPass QR code." : "Sign in to open your store's QR code."}
           </p>
 
           <form onSubmit={submit} className="mt-6 space-y-4" noValidate>
-            {(mode === "register" || mode === "profile") && (
+            {mode === "register" && (
               <>
                 <Field label="Store name">
                   <input
@@ -165,7 +151,7 @@ export function StoreAuth({ onSignedIn }: { onSignedIn: (account: StoreAccount) 
                   <input
                     className={inputClass}
                     value={location}
-                    maxLength={80}
+                    maxLength={STORE_LOCATION_MAX}
                     onChange={(e) => setLocation(e.target.value)}
                     placeholder="Rua Augusta 12, Lisboa"
                   />
@@ -173,33 +159,26 @@ export function StoreAuth({ onSignedIn }: { onSignedIn: (account: StoreAccount) 
               </>
             )}
 
-            {mode !== "profile" && (
-              <>
-                <Field label="Email">
-                  <input
-                    className={inputClass}
-                    type="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="owner@store.pt"
-                    autoFocus={mode === "signin"}
-                  />
-                </Field>
-                <Field
-                  label="Password"
-                  hint={mode === "register" ? `At least ${MIN_PASSWORD_LENGTH} characters.` : undefined}
-                >
-                  <input
-                    className={inputClass}
-                    type="password"
-                    autoComplete={mode === "register" ? "new-password" : "current-password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                </Field>
-              </>
-            )}
+            <Field label="Email" hint={mode === "register" ? "One email per store. Each store gets its own QR code." : undefined}>
+              <input
+                className={inputClass}
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="owner@store.pt"
+                autoFocus={mode === "signin"}
+              />
+            </Field>
+            <Field label="Password" hint={mode === "register" ? `At least ${MIN_PASSWORD_LENGTH} characters.` : undefined}>
+              <input
+                className={inputClass}
+                type="password"
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </Field>
 
             {error && (
               <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-inset ring-rose-200">
@@ -208,13 +187,13 @@ export function StoreAuth({ onSignedIn }: { onSignedIn: (account: StoreAccount) 
             )}
 
             <Button type="submit" size="lg" block loading={busy}>
-              {mode === "register" ? "Create store" : mode === "signin" ? "Sign in" : "Open my store"}
+              {mode === "register" ? "Create store" : "Sign in"}
             </Button>
           </form>
 
           <p className="mt-6 text-xs leading-relaxed text-ink-400">
-            Use the same email and password on any device to open your store with the same QR code. This prototype
-            doesn&apos;t keep accounts on a server, so a forgotten password can&apos;t be recovered.
+            Your store and its QR code are saved permanently. Sign in with the same email and password on any device to
+            get the same QR code. Your password never leaves this device, so a forgotten password can&apos;t be recovered.
           </p>
         </div>
       </main>

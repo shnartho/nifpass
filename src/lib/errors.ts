@@ -28,6 +28,22 @@ const messages: Record<ClientErrorCode, FriendlyError> = {
     title: "Sign-in problem",
     message: "We couldn't verify this store account. Please sign out and sign in again.",
   },
+  ACCOUNT_NOT_FOUND: {
+    title: "Store not found",
+    message: "No store is registered with this email. Check the email or create your store first.",
+  },
+  WRONG_PASSWORD: {
+    title: "Wrong password",
+    message: "The email or password is incorrect. Please try again.",
+  },
+  EMAIL_TAKEN: {
+    title: "Email already registered",
+    message: "A store is already registered with this email. Sign in instead, or use another email for a different store.",
+  },
+  QR_REPLACED: {
+    title: "New QR code",
+    message: "This store's QR code was replaced on another screen. Please sign in again.",
+  },
   RATE_LIMITED: {
     title: "Too many attempts",
     message: "Please wait a minute before trying again.",

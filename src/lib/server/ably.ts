@@ -1,7 +1,6 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import { createHttpClient, type PubSubHttpClient } from "@ably/pubsub-server";
 import { NextResponse } from "next/server";
-import { STORE_ID_HASH_PREFIX, sanitizeStoreName, storeChannel, type ApiResult, type ErrorCode } from "@/shared/protocol";
+import { sanitizeStoreName, storeChannel, type ApiResult, type ErrorCode } from "@/shared/protocol";
 
 let rest: PubSubHttpClient | null = null;
 
@@ -11,14 +10,6 @@ export function ably(): PubSubHttpClient | null {
   if (!key) return null;
   rest ??= createHttpClient({ key });
   return rest;
-}
-
-export function ownsStore(storeId: string, secret: string): boolean {
-  const expected = Buffer.from(
-    createHash("sha256").update(STORE_ID_HASH_PREFIX + secret).digest("base64url").slice(0, 22),
-  );
-  const given = Buffer.from(storeId);
-  return expected.length === given.length && timingSafeEqual(expected, given);
 }
 
 /** Name of the store if at least one of its screens is open, otherwise null. */
@@ -41,6 +32,10 @@ const statusFor: Record<ErrorCode, number> = {
   STORE_OFFLINE: 404,
   DELIVERY_FAILED: 502,
   UNAUTHORIZED: 403,
+  ACCOUNT_NOT_FOUND: 404,
+  WRONG_PASSWORD: 403,
+  EMAIL_TAKEN: 409,
+  QR_REPLACED: 409,
   RATE_LIMITED: 429,
   SERVER_BUSY: 503,
 };

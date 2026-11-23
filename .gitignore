@@ -10,3 +10,6 @@ certs/
 *.pem
 npm-debug.log*
 .DS_Store
+
+# Local store registry used by npm run dev when no Vercel Blob store is connected
+.data/

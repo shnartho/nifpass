@@ -1,23 +1,20 @@
-import { api } from "@/lib/api";
-import { STORE_ID_HASH_PREFIX, type StoreProfile } from "@/shared/protocol";
+import { api, type ClientResult } from "@/lib/api";
+import { normalizeEmail, type StoreAccountInfo } from "@/shared/protocol";
 
 /**
- * Store accounts without a database: email + password are stretched with PBKDF2
- * into a 256-bit secret. The public store id (in the QR) is a hash of that secret,
- * so the same credentials give the same permanent QR on any device, and only
- * someone who knows the password can receive that store's NIFs.
+ * Store accounts: email + password are stretched in the browser with PBKDF2 into a
+ * 256-bit secret, so the password never leaves the device. The server keeps each store
+ * permanently (Vercel Blob), keyed by email, with its QR id, name and location. The QR id
+ * only changes when the owner generates a new QR code.
  */
 
-export interface StoreAccount {
-  storeId: string;
+export interface StoreAccount extends StoreAccountInfo {
   secret: string;
   email: string;
-  name: string;
-  location: string;
 }
 
 const ACCOUNT_KEY = "nifpass.store.account";
-const PROFILES_KEY = "nifpass.store.profiles";
+const LEGACY_PROFILES_KEY = "nifpass.store.profiles";
 const PBKDF2_ITERATIONS = 310_000;
 export const MIN_PASSWORD_LENGTH = 8;
 
@@ -25,45 +22,64 @@ const enc = new TextEncoder();
 const b64url = (bytes: Uint8Array) =>
   btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
-export const normalizeEmail = (email: string) => email.trim().toLowerCase();
+export { normalizeEmail };
 
-export async function deriveStoreCredentials(email: string, password: string) {
+export type Credentials = { email: string; secret: string };
+
+export async function deriveCredentials(email: string, password: string): Promise<Credentials> {
   if (!window.isSecureContext || !crypto?.subtle) {
     throw new Error("Store sign-in requires a secure (HTTPS) connection.");
   }
+  const normalized = normalizeEmail(email);
   const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
     {
       name: "PBKDF2",
       hash: "SHA-256",
-      salt: enc.encode(`nifpass/store/v1:${normalizeEmail(email)}`),
+      salt: enc.encode(`nifpass/store/v1:${normalized}`),
       iterations: PBKDF2_ITERATIONS,
     },
     key,
     256,
   );
-  const secret = b64url(new Uint8Array(bits));
-  const digest = await crypto.subtle.digest("SHA-256", enc.encode(STORE_ID_HASH_PREFIX + secret));
-  const storeId = b64url(new Uint8Array(digest)).slice(0, 22);
-  return { storeId, secret };
+  return { email: normalized, secret: b64url(new Uint8Array(bits)) };
 }
 
-function readProfiles(): Record<string, StoreProfile> {
-  try {
-    return JSON.parse(localStorage.getItem(PROFILES_KEY) ?? "{}");
-  } catch {
-    return {};
-  }
+type AccountResponse = ClientResult<{ account: StoreAccountInfo }>;
+
+const withCreds = (creds: Credentials, res: AccountResponse): ClientResult<{ account: StoreAccount }> =>
+  res.ok ? { ok: true, account: { ...res.account, ...creds } } : res;
+
+export async function signInStore(creds: Credentials) {
+  return withCreds(creds, await api<{ account: StoreAccountInfo }>("/api/store/account", creds));
 }
 
-export function getSavedProfile(storeId: string): StoreProfile | null {
-  return readProfiles()[storeId] ?? null;
+export async function registerStore(creds: Credentials, name: string, location: string) {
+  return withCreds(creds, await api<{ account: StoreAccountInfo }>("/api/store/account", { ...creds, name, location }, "PUT"));
+}
+
+/** Replaces the store's QR code; the old one (and any printed copy) stops working. */
+export async function regenerateQr(account: StoreAccount) {
+  const creds = { email: account.email, secret: account.secret };
+  return withCreds(creds, await api<{ account: StoreAccountInfo }>("/api/store/qr", { ...creds, storeId: account.storeId }));
+}
+
+/**
+ * Fetches the latest saved details (e.g. a QR replaced on another screen). Screens signed in
+ * before the server registry existed are registered with the details kept on this device.
+ */
+export async function syncAccount(account: StoreAccount) {
+  const creds = { email: account.email, secret: account.secret };
+  const res = await signInStore(creds);
+  if (res.ok || res.code !== "ACCOUNT_NOT_FOUND") return res;
+  return registerStore(creds, account.name, account.location);
 }
 
 export function loadAccount(): StoreAccount | null {
   try {
     const raw = localStorage.getItem(ACCOUNT_KEY);
-    return raw ? (JSON.parse(raw) as StoreAccount) : null;
+    const account = raw ? (JSON.parse(raw) as Partial<StoreAccount>) : null;
+    return account?.storeId && account.secret && account.email && account.name ? (account as StoreAccount) : null;
   } catch {
     return null;
   }
@@ -71,33 +87,9 @@ export function loadAccount(): StoreAccount | null {
 
 export function saveAccount(account: StoreAccount) {
   localStorage.setItem(ACCOUNT_KEY, JSON.stringify(account));
-  const profiles = readProfiles();
-  profiles[account.storeId] = { name: account.name, location: account.location };
-  localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
+  localStorage.removeItem(LEGACY_PROFILES_KEY);
 }
 
 export function clearAccount() {
   localStorage.removeItem(ACCOUNT_KEY);
-}
-
-type Creds = { storeId: string; secret: string };
-
-/** The store's profile saved on the server, or null if none (or unreachable). */
-export async function fetchRemoteProfile(creds: Creds): Promise<StoreProfile | null> {
-  const res = await api<{ profile: StoreProfile | null }>("/api/store/profile", creds);
-  return res.ok ? res.profile : null;
-}
-
-/** Best effort: lets the same email + password open this store on other devices. */
-export async function saveRemoteProfile(account: StoreAccount): Promise<void> {
-  await fetch("/api/store/profile", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      storeId: account.storeId,
-      secret: account.secret,
-      name: account.name,
-      location: account.location,
-    }),
-  }).catch(() => {});
 }

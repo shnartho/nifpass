@@ -10,10 +10,12 @@ import { buildQrPayload, publicBaseUrl } from "@/lib/qrPayload";
 import {
   clearAccount,
   loadAccount,
+  regenerateQr,
   saveAccount,
-  saveRemoteProfile,
+  syncAccount,
   type StoreAccount,
 } from "@/lib/storeAuth";
+import { friendlyError } from "@/lib/errors";
 import { useInstallPrompt } from "@/lib/useInstallPrompt";
 import { InstallSheet } from "@/components/user/InstallSheet";
 import { PlatformLogos } from "@/components/PlatformLogos";
@@ -44,9 +46,46 @@ const mergeEntries = (current: NifEntry[], incoming: NifEntry[]) => {
   return [...byId.values()].sort((a, b) => b.receivedAt - a.receivedAt).slice(0, MAX_ENTRIES);
 };
 
-function downloadPoster(qr: HTMLCanvasElement, storeName: string) {
-  const W = 1240;
-  const H = 1754;
+const FONT = "system-ui, -apple-system, 'Segoe UI', sans-serif";
+const INK = "#0b1736";
+const MUTED = "#5b6584";
+const BRAND = "#5640e6";
+
+/** Draws left-aligned text wrapped to `maxWidth`; returns the y below the last line. */
+function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
+  let line = "";
+  for (const word of text.split(" ")) {
+    const test = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(test).width > maxWidth) {
+      ctx.fillText(line, x, y);
+      line = word;
+      y += lineHeight;
+    } else {
+      line = test;
+    }
+  }
+  if (line) ctx.fillText(line, x, y);
+  return y + lineHeight;
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/**
+ * Printable A4 landscape poster. Left (~30%): how to get NIFPass, with a small QR to the
+ * website. Right: the store's QR, big, for customers who already have the app.
+ */
+function downloadPoster(storeQr: HTMLCanvasElement, siteQr: HTMLCanvasElement, storeName: string, host: string) {
+  const W = 3508;
+  const H = 2480;
+  const M = 140;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
@@ -54,23 +93,85 @@ function downloadPoster(qr: HTMLCanvasElement, storeName: string) {
   if (!ctx) return;
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, W, H);
+
+  // Header
   ctx.textAlign = "center";
-  ctx.fillStyle = "#5640e6";
-  ctx.font = "600 44px system-ui, sans-serif";
-  ctx.fillText("NIFPass", W / 2, 150);
-  ctx.fillStyle = "#0b1736";
-  ctx.font = "700 76px system-ui, sans-serif";
-  ctx.fillText(storeName, W / 2, 270, W - 120);
-  ctx.drawImage(qr, (W - 900) / 2, 360, 900, 900);
-  ctx.font = "600 52px system-ui, sans-serif";
-  ctx.fillText("Scan to share your NIF", W / 2, 1380);
-  ctx.fillStyle = "#5b6584";
-  ctx.font = "400 36px system-ui, sans-serif";
-  ctx.fillText("No need to say it out loud.", W / 2, 1450);
-  ctx.font = "400 28px system-ui, sans-serif";
-  ctx.fillText("NIFPass by GoGentik", W / 2, 1660);
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = INK;
+  ctx.font = `800 190px ${FONT}`;
+  ctx.fillText("Share your NIF here", W / 2, 330);
+  ctx.fillStyle = MUTED;
+  ctx.font = `500 84px ${FONT}`;
+  ctx.fillText(`${storeName} · no need to say it out loud`, W / 2, 470, W - 2 * M);
+
+  const top = 590;
+  const bottom = H - 200;
+  const leftW = Math.round((W - 2 * M) * 0.3);
+  const gap = 90;
+
+  // Left panel: for customers without NIFPass
+  roundRect(ctx, M, top, leftW, bottom - top, 64);
+  ctx.fillStyle = "#f2f1fd";
+  ctx.fill();
+  const lx = M + 80;
+  const lw = leftW - 160;
+  ctx.textAlign = "left";
+  ctx.fillStyle = BRAND;
+  ctx.font = `800 96px ${FONT}`;
+  let y = wrapText(ctx, "Don't have NIFPass?", lx, top + 170, lw, 110);
+
+  const siteQrSize = 540;
+  ctx.drawImage(siteQr, M + (leftW - siteQrSize) / 2, y + 10, siteQrSize, siteQrSize);
+  ctx.textAlign = "center";
+  ctx.fillStyle = MUTED;
+  ctx.font = `500 50px ${FONT}`;
+  ctx.fillText(host, M + leftW / 2, y + siteQrSize + 80, lw);
+  y += siteQrSize + 200;
+
+  const steps = [
+    `Go to ${host} or scan the QR code above.`,
+    "Tap Install.",
+    "Open the app and scan the big QR code on the right to send your NIF.",
+  ];
+  const badge = 46;
+  steps.forEach((step, i) => {
+    ctx.fillStyle = BRAND;
+    ctx.beginPath();
+    ctx.arc(lx + badge, y - 22, badge, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.font = `800 58px ${FONT}`;
+    ctx.fillText(String(i + 1), lx + badge, y);
+    ctx.textAlign = "left";
+    ctx.fillStyle = INK;
+    ctx.font = `600 60px ${FONT}`;
+    y = wrapText(ctx, step, lx + badge * 2 + 36, y, lw - badge * 2 - 36, 74) + 46;
+  });
+
+  // Right: the store's QR, as big as fits
+  const rx = M + leftW + gap;
+  const rw = W - M - rx;
+  ctx.textAlign = "center";
+  ctx.fillStyle = INK;
+  ctx.font = `700 92px ${FONT}`;
+  ctx.fillText("Have NIFPass? Scan this code", rx + rw / 2, top + 90, rw);
+  const qrSize = Math.min(rw, bottom - top - 150);
+  ctx.drawImage(storeQr, rx + (rw - qrSize) / 2, top + 140, qrSize, qrSize);
+
+  // Footer
+  ctx.fillStyle = MUTED;
+  ctx.font = `500 54px ${FONT}`;
+  ctx.fillText("NIFPass by GoGentik", W / 2, H - 90);
+
   const link = document.createElement("a");
-  link.download = `nifpass-qr-${storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.png`;
+  const slug = storeName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  link.download = `nifpass-qr-${slug || "store"}.png`;
   link.href = canvas.toDataURL("image/png");
   link.click();
 }
@@ -85,26 +186,63 @@ const initials = (name: string) =>
 
 export default function MerchantApp() {
   const [account, setAccount] = useState<StoreAccount | null>(() => loadAccount());
+  // Accounts restored from this device are re-checked with the server once before connecting.
+  const [syncedId, setSyncedId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const signIn = (a: StoreAccount) => {
-    saveAccount(a);
-    setAccount(a);
-  };
+  const update = useCallback(
+    (next: StoreAccount) => {
+      // A new QR id keeps this screen's received NIFs.
+      if (account && account.storeId !== next.storeId) {
+        const saved = localStorage.getItem(entriesKey(account.storeId));
+        if (saved) localStorage.setItem(entriesKey(next.storeId), saved);
+        localStorage.removeItem(entriesKey(account.storeId));
+      }
+      saveAccount(next);
+      setAccount(next);
+      setSyncedId(next.storeId);
+    },
+    [account],
+  );
 
-  if (!account) return <StoreAuth onSignedIn={signIn} />;
+  const signOut = useCallback(
+    (message: string | null = null) => {
+      if (account) localStorage.removeItem(entriesKey(account.storeId));
+      clearAccount();
+      setAccount(null);
+      setNotice(message);
+    },
+    [account],
+  );
+
+  if (!account) return <StoreAuth notice={notice} onSignedIn={update} />;
   return (
     <StoreDashboard
       key={account.storeId}
       account={account}
-      onSignOut={() => {
-        clearAccount();
-        setAccount(null);
-      }}
+      synced={syncedId === account.storeId}
+      onUpdate={update}
+      onSignOut={signOut}
     />
   );
 }
 
-function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignOut: () => void }) {
+// Answers that mean this device's saved login is no longer valid.
+const FINAL_SYNC_ERRORS = new Set(["ACCOUNT_NOT_FOUND", "WRONG_PASSWORD", "EMAIL_TAKEN", "UNAUTHORIZED", "INVALID_REQUEST"]);
+
+function StoreDashboard({
+  account,
+  synced,
+  onUpdate,
+  onSignOut,
+}: {
+  account: StoreAccount;
+  synced: boolean;
+  onUpdate: (account: StoreAccount) => void;
+  onSignOut: (message?: string | null) => void;
+}) {
+  const [ready, setReady] = useState(synced);
+  const [regenerating, setRegenerating] = useState(false);
   const [entries, setEntries] = useState<NifEntry[]>(() => loadEntries(account.storeId));
   const [toasts, setToasts] = useState<NifEntry[]>([]);
   const [nfcNotice, setNfcNotice] = useState(false);
@@ -120,7 +258,8 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
     setMenuOpen(false);
   };
   const posterRef = useRef<HTMLCanvasElement>(null);
-  const { host, isLocal } = useMemo(() => publicBaseUrl(), []);
+  const siteQrRef = useRef<HTMLCanvasElement>(null);
+  const { base, host, isLocal } = useMemo(() => publicBaseUrl(), []);
   const qrPayload = useMemo(() => buildQrPayload(account.storeId), [account.storeId]);
 
   const dismissToast = useCallback((id: string) => setToasts((cur) => cur.filter((t) => t.id !== id)), []);
@@ -132,15 +271,35 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
     if (!(await install())) setShowInstallSteps(true);
   };
 
-  // Keeps the server copy of the profile up to date so this login works on other devices.
-  useEffect(() => {
-    void saveRemoteProfile(account);
-  }, [account]);
+  /** Loads the store's saved details (e.g. its current QR id) from the server. */
+  const resync = useCallback(async () => {
+    const res = await syncAccount(account);
+    if (res.ok) {
+      if (res.account.storeId !== account.storeId || res.account.name !== account.name || res.account.location !== account.location) {
+        onUpdate(res.account);
+      }
+    } else if (FINAL_SYNC_ERRORS.has(res.code)) {
+      onSignOut(friendlyError(res.code).message);
+      return;
+    }
+    // Offline or busy: connect anyway; the token request retries on its own.
+    setReady(true);
+  }, [account, onUpdate, onSignOut]);
 
-  const { state: connection, error: connectionError } = useStoreChannel(account, (entry) => {
-    setEntries((cur) => mergeEntries(cur, [entry]));
-    setToasts([entry]);
-  });
+  useEffect(() => {
+    if (!synced) void resync();
+    // Once per screen (dashboard remounts when the QR id changes).
+  }, []);
+
+  const { state: connection, error: connectionError } = useStoreChannel(
+    account,
+    ready,
+    (entry) => {
+      setEntries((cur) => mergeEntries(cur, [entry]));
+      setToasts([entry]);
+    },
+    () => void resync(),
+  );
 
   useEffect(() => {
     localStorage.setItem(entriesKey(account.storeId), JSON.stringify(entries));
@@ -160,12 +319,28 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
 
   const signOut = () => {
     if (!window.confirm("Sign out? This screen will stop receiving NIFs until you sign in again.")) return;
-    localStorage.removeItem(entriesKey(account.storeId));
     onSignOut();
   };
 
+  const newQr = async () => {
+    setMenuOpen(false);
+    if (
+      !window.confirm(
+        "Generate a new QR code?\n\nYour current QR code, including any printed copies, will stop working. Customers will need to scan the new one.",
+      )
+    ) {
+      return;
+    }
+    setRegenerating(true);
+    const res = await regenerateQr(account);
+    setRegenerating(false);
+    if (res.ok) return onUpdate(res.account);
+    if (res.code === "QR_REPLACED") return void resync();
+    window.alert(friendlyError(res.code).message);
+  };
+
   const downloadQr = () => {
-    if (posterRef.current) downloadPoster(posterRef.current, account.name);
+    if (posterRef.current && siteQrRef.current) downloadPoster(posterRef.current, siteQrRef.current, account.name, host);
     setMenuOpen(false);
   };
 
@@ -215,7 +390,8 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
           onClose={() => setShowInstallSteps(false)}
         />
       )}
-      <QRCodeCanvas ref={posterRef} value={qrPayload} size={900} level="M" marginSize={2} className="hidden" />
+      <QRCodeCanvas ref={posterRef} value={qrPayload} size={1600} level="M" marginSize={2} className="hidden" />
+      <QRCodeCanvas ref={siteQrRef} value={`${base}/`} size={600} level="M" marginSize={2} className="hidden" />
 
       {/* ---------- Desktop / laptop: 3 columns, no page scroll ---------- */}
       <div
@@ -287,6 +463,9 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
             )}
             <Button variant="secondary" block onClick={downloadQr}>
               Download QR to print
+            </Button>
+            <Button variant="ghost" block loading={regenerating} onClick={() => void newQr()}>
+              Generate new QR code
             </Button>
             <Button variant="ghost" block onClick={signOut}>
               Sign out
@@ -373,6 +552,14 @@ function StoreDashboard({ account, onSignOut }: { account: StoreAccount; onSignO
                 )}
                 <button type="button" onClick={downloadQr} className="w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-ink-50">
                   Download QR to print
+                </button>
+                <button
+                  type="button"
+                  disabled={regenerating}
+                  onClick={() => void newQr()}
+                  className="w-full rounded-xl px-3 py-2.5 text-left text-sm hover:bg-ink-50 disabled:text-ink-300"
+                >
+                  Generate new QR code
                 </button>
                 <button
                   type="button"

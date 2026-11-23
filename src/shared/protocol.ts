@@ -3,12 +3,16 @@
 export const QR_PREFIX = "NIFPASS:";
 export const STORE_QUERY_PARAM = "s";
 export const STORE_NAME_MAX = 60;
-/** The public store id is derived from the secret, so the server can verify ownership without a database. */
+/** Stores registered before the account registry used base64url(SHA-256(prefix + secret)) as their QR id. */
 export const STORE_ID_HASH_PREFIX = "nifpass-store-id:v1:";
 export const NIF_EVENT = "nif";
+/** Sent to a store's old channel when the owner generates a new QR, so its other screens switch over. */
+export const QR_REPLACED_EVENT = "qr-replaced";
 
-/** First 22 chars of base64url(SHA-256(prefix + secret)). */
+/** 22 base64url chars (132 bits), random or legacy-derived. */
 export const STORE_ID_RE = /^[A-Za-z0-9_-]{22}$/;
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const EMAIL_MAX = 254;
 /** 32 bytes as base64url. */
 export const STORE_SECRET_RE = /^[A-Za-z0-9_-]{43}$/;
 export const NIF_RE = /^\d{9}$/;
@@ -22,6 +26,10 @@ export type ErrorCode =
   | "STORE_OFFLINE"
   | "DELIVERY_FAILED"
   | "UNAUTHORIZED"
+  | "ACCOUNT_NOT_FOUND"
+  | "WRONG_PASSWORD"
+  | "EMAIL_TAKEN"
+  | "QR_REPLACED"
   | "RATE_LIMITED"
   | "SERVER_BUSY";
 
@@ -44,6 +52,17 @@ export interface StoreProfile {
   location: string;
 }
 
+/** What the server returns about a signed-in store. */
+export interface StoreAccountInfo extends StoreProfile {
+  storeId: string;
+}
+
+export const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+export function isValidEmail(value: unknown): value is string {
+  return typeof value === "string" && value.length <= EMAIL_MAX && EMAIL_RE.test(value);
+}
+
 export const STORE_LOCATION_MAX = 80;
 
 export function sanitizeLocation(value: unknown): string {
@@ -52,8 +71,9 @@ export function sanitizeLocation(value: unknown): string {
 }
 
 export interface StoreTokenRequestBody {
-  storeId: string;
+  email: string;
   secret: string;
+  storeId: string;
 }
 
 export function isValidNif(value: unknown): value is string {
